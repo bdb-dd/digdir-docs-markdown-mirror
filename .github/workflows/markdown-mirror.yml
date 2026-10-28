@@ -1,0 +1,79 @@
+# Publish a Markdown copy of docs.digdir.no to GitHub Pages, for retrieval ingestion.
+# Builds felleslosninger/docs (gh-pages) with Jekyll plus _plugins/markdown_output.rb from this repository,
+# then publishes only the generated .md pages and sitemap-markdown.xml (no HTML copy of the site).
+name: Markdown mirror
+
+on:
+  schedule:
+    - cron: "0 1 * * 1" # Mondays 01:00 UTC, before a weekly ingest
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: mirror
+
+      - name: Check out docs.digdir.no
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: felleslosninger/docs
+          ref: gh-pages
+          path: site
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: mirror
+
+      - name: Set up Pages
+        id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Build
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/mirror/Gemfile
+          JEKYLL_ENV: production
+        run: |
+          cp mirror/_plugins/markdown_output.rb site/_plugins/
+          printf 'url: "%s"\nbaseurl: ""\n' "${{ steps.pages.outputs.base_url }}" > mirror/_config_mirror.yml
+          bundle exec jekyll build --source site --destination _site --config site/_config.yml,mirror/_config_mirror.yml
+
+      - name: Keep only the Markdown output
+        run: |
+          mkdir public
+          cp _site/sitemap-markdown.xml public/
+          (cd _site && find . -name '*.md' -print0 | cpio -0 -pdm ../public)
+          pages=$(find public -name '*.md' | wc -l)
+          echo "Markdown pages: $pages"
+          test "$pages" -gt 400
+
+      - name: Upload
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ./public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
