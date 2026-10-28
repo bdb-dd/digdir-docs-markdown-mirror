@@ -7,7 +7,18 @@ require "json"
 require "time"
 
 module MarkdownOutput
-  FIELDS = %w[title description summary product sidebar tags category].freeze
+  FIELDS = %w[title description summary sidebar tags category].freeze
+  # Canonical product names for the frontmatter values and /docs/<dir>/ paths used on docs.digdir.no.
+  PRODUCTS = {
+    "idporten" => "ID-porten", "id-porten" => "ID-porten",
+    "maskinporten" => "Maskinporten", "maskinporten_sidebar" => "Maskinporten",
+    "ansattporten" => "Ansattporten",
+    "kontaktregisteret" => "KRR", "krr" => "KRR", "kontakt- og reservasjonsregisteret" => "KRR",
+    "eformidling" => "eFormidling", "einnsyn" => "eInnsyn", "elma" => "ELMA",
+    "digitalpostkasse" => "Digital postkasse", "digital postkasse" => "Digital postkasse",
+    "selvbetjening" => "Selvbetjening", "esignering" => "eSignering", "lommebok" => "Lommebok",
+    "egovernment" => "eGovernment", "general" => "general",
+  }.freeze
   MARKDOWN = %w[.md .markdown].freeze
 
   module_function
@@ -34,9 +45,18 @@ module MarkdownOutput
       next if value.nil? || (value.respond_to?(:empty?) && value.empty?)
       out[key] = value.is_a?(String) ? value.strip : value
     end
+    product = product(doc)
+    fields["product"] = product if product
     fields["lastmod"] = doc.data["last_modified_at"].iso8601 if doc.data["last_modified_at"].respond_to?(:iso8601)
     # JSON scalars are valid YAML, so titles with ':' or quotes stay parseable.
     "---\n" + fields.map { |k, v| "#{k}: #{JSON.generate(v)}" }.join("\n") + "\n---\n\n"
+  end
+
+  # The page's own product, normalised; else the product of its /docs/<dir>/ path.
+  def product(doc)
+    raw = doc.data["product"].to_s.strip
+    dir = doc.url[%r{\A/docs/([^/]+)/}, 1].to_s
+    PRODUCTS[raw.downcase] || PRODUCTS[dir.downcase] || (raw.empty? ? nil : raw)
   end
 
   def markdown_url(url)
