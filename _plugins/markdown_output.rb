@@ -4,6 +4,7 @@
 # but not converted to HTML, under a YAML frontmatter block with the page's own metadata.
 # /docs/x/y.html gets /docs/x/y.md; /docs/x/ (index.html) gets /docs/x/index.md.
 require "json"
+require "uri"
 require "time"
 
 module MarkdownOutput
@@ -77,7 +78,8 @@ Jekyll::Hooks.register :site, :post_write do |site|
     body = doc.data["markdown_output"]
     next unless body
     url = MarkdownOutput.markdown_url(doc.url)
-    path = File.join(site.dest, url)
+    # doc.url is percent-encoded (leverand%C3%B8r.html); the file on disk needs the decoded name.
+    path = File.join(site.dest, URI.decode_www_form_component(url.gsub("+", "%2B")))
     FileUtils.mkdir_p(File.dirname(path))
     File.write(path, MarkdownOutput.frontmatter(doc) + body.strip + "\n")
     entries << [base + url, doc.data["last_modified_at"]]
